@@ -1,11 +1,12 @@
 import numpy as np
 
+# from OpenAI's baselines https://github.com/openai/baselines/blob/master/baselines/deepq/replay_buffer.py
 class ExperienceReplay():
     def __init__(self, size):
         self.buffer = []
         self.maxsize = size
         self.next_idx = 0
-        self.np_random = np.RandomState()
+        self.np_random = np.random.RandomState()
 
     def __len__(self):
         return len(self.buffer)
@@ -18,13 +19,14 @@ class ExperienceReplay():
         self.next_idx = (self.next_idx + 1)%self.maxsize
 
     def sample(self, batch_size):
+        # sample indices into buffer
         idxs = self.np_random.randint(0,len(self.buffer),size=(batch_size,))    # randint samples ints from [low,high)
         states, actions, rewards, next_states, dones = [], [], [], [], []
-        for idx in idxs:
+        for idx in idxs:    # extract experience at given indices
             state, action, reward, next_state, done = self.buffer[idx]
-            states.append(np.array(state))
-            actions.append(action)
-            rewards.append(reward)
-            next_states.append(np.array(next_state))
-            dones.append(done)
-        return (np.array(states), np.array(actions), np.array(rewards), np.array(next_states), np.array(done))
+            states.append(state)    # list of int arrays
+            actions.append(action)  # list of ints
+            rewards.append(reward)  # list of ints
+            next_states.append(next_state)  # list of int arrays
+            dones.append(done)  # list of bools
+        return (np.array(states), np.array(actions), np.array(rewards), np.array(next_states), np.array(dones))

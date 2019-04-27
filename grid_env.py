@@ -7,16 +7,17 @@ class GridEnv():
         self.size = size
         self.state = None
         self.num_actions = 4    # left, right, up, down
-        self.np_random = np.RandomState()
+        self.state_size = 2     # states are 2-tuples (x,y)
+        self.np_random = np.random.RandomState()
 
     def reset(self):
         self.state = np.array([0, 0])
 
     def sample(self):
-        return self.np_random.choice(self.action_space)
+        return self.np_random.randint(self.num_actions)
 
     def step(self, action):
-        assert action in self.action_space
+        assert action < self.num_actions
         assert self.state is not None
 
         done = False
