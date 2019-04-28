@@ -4,17 +4,17 @@ import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
 
-episodes = 10
-runs = 1
+episodes = 1000
+runs = 10
 gamma = .95
-alpha = 0.001   # rate at which the target net tracks the main net
+update_every = 100
 
 class DQN_agent():
     def __init__(self):
         self.eps = 0.1
         self.env = GridEnv(3)
-        self.replay = ExperienceReplay(100)   # passing size of buffer
-        self.batch_size = 10
+        self.replay = ExperienceReplay(10000)   # passing size of buffer
+        self.batch_size = 20
 
         # define graph
         self.inputs = tf.placeholder(tf.float32, shape=(None, self.env.state_size))
@@ -23,9 +23,9 @@ class DQN_agent():
         self.Q_out_op, self.Q_update_op = self.build_graph()    # build main network
         self.target_Q_out_op, _ = self.build_graph('target')    # build identical target network
         
-        init_op = tf.global_variables_initializer()
+        self.init_op = tf.global_variables_initializer()
         self.sess = tf.Session()
-        self.sess.run(init_op)
+
 
     def build_graph(self, scope='main'):
         with tf.variable_scope(scope):
@@ -40,8 +40,9 @@ class DQN_agent():
             update = tf.train.AdamOptimizer().minimize(loss)
         return outputs, update
 
+
     def train(self):
-        steps_per_ep = []
+        steps_per_ep = np.zeros(episodes)
         for episode in range(episodes):
             print(episode)
             self.env.reset() 
@@ -55,13 +56,14 @@ class DQN_agent():
                 self.replay.add((state, action, reward, next_state, done))    # store in experience replay
                 minibatch = self.replay.sample(self.batch_size)    # sample from experience replay
                 self.net_update(minibatch)  # qlearning
-                self.target_net_update()    # slowly update target network
+                if num_steps%update_every == 0:
+                    self.target_net_update()    # slowly update target network
                 state = next_state
-            steps_per_ep.append(num_steps)
-        plt.plot(steps_per_ep)
-        plt.show()
+            steps_per_ep[episode] = num_steps
+        return steps_per_ep
 
-    # based on https://tomaxent.com/2017/07/09/Using-Tensorflow-and-Deep-Q-Network-Double-DQN-to-Play-Breakout/
+
+    # from https://tomaxent.com/2017/07/09/Using-Tensorflow-and-Deep-Q-Network-Double-DQN-to-Play-Breakout/
     def target_net_update(self):
         # get sorted lists of parameters in each of the networks
         main_params = [t for t in tf.trainable_variables() if t.name.startswith("main")]
@@ -71,7 +73,7 @@ class DQN_agent():
 
         update_ops = []
         for main_v, target_v in zip(main_params, target_params):
-            op = target_v.assign(alpha*main_v + (1-alpha)*target_v)   # soft update of target towards main
+            op = target_v.assign(main_v)
             update_ops.append(op)
 
         self.sess.run(update_ops)
@@ -92,6 +94,7 @@ class DQN_agent():
         # compute gradients and update parameters
         self.sess.run(self.Q_update_op, {self.inputs: states, self.target_values: target_values, self.actions: actions})
 
+
     # returns eps-greedy action with respect to Q
     def get_eps_action(self, state, eps):
         if self.env.np_random.uniform() < eps:
@@ -102,4 +105,14 @@ class DQN_agent():
             action = self.env.np_random.choice(max_actions) # to select argmax randomly
         return action
 
-DQN_agent().train()
+
+avg_steps = np.zeros(episodes)
+agent = DQN_agent()
+for run in range(runs):
+    print("run: ", run)
+    agent.sess.run(agent.init_op)
+    avg_steps += (agent.train() - avg_steps)/(run+1)
+plt.plot(avg_steps)
+plt.xlabel("Episode")
+plt.ylabel("Average Number of Steps")
+plt.show()

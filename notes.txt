@@ -1,0 +1,2 @@
+27/4/19
+Doing the "soft" update to the target network after every step took too much time. Switching to periodic hard updates made everything a lot faster. The agent learns quickly but then seems to get worse before getting better. I think this is because successful episodes correspond to less experience for this task. So most experience in the replay buffer is from poor episodes. Prioritized experience replay should address this problem.
