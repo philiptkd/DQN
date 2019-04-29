@@ -1,5 +1,5 @@
 from grid_env import GridEnv
-from experience_replay import ExperienceReplay
+from experience_replay import ExperienceReplay, PrioritizedReplay
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
@@ -8,20 +8,28 @@ episodes = 1000
 runs = 10
 gamma = .95
 update_every = 100
+prioritized_replay = True
+prioritized_replay_alpha = 0.6  # from paper
+beta0 = 0.4  # from paper
 
 class DQN_agent():
     def __init__(self):
         self.eps = 0.1
         self.env = GridEnv(3)
-        self.replay = ExperienceReplay(10000)   # passing size of buffer
         self.batch_size = 20
+        
+        if prioritized_replay:
+            self.replay = PrioritizedReplay(10000, prioritized_replay_alpha)
+        else:
+            self.replay = ExperienceReplay(10000)   # passing size of buffer
 
         # define graph
         self.inputs = tf.placeholder(tf.float32, shape=(None, self.env.state_size))
         self.target_values = tf.placeholder(tf.float32, shape=(None, ))
         self.actions = tf.placeholder(tf.int32, shape=(None, ))
-        self.Q_out_op, self.Q_update_op = self.build_graph()    # build main network
-        self.target_Q_out_op, _ = self.build_graph('target')    # build identical target network
+        self.is_weights = tf.placeholder(tf.float32, shape=(None, ))    # importance sampling weights for prioritized replay
+        self.Q_out_op, self.Q_update_op, self.td_error_op = self.build_graph()    # build main network
+        self.target_Q_out_op, _, _ = self.build_graph('target')    # build identical target network
         
         self.init_op = tf.global_variables_initializer()
         self.sess = tf.Session()
@@ -32,13 +40,19 @@ class DQN_agent():
             h = tf.layers.dense(self.inputs, 16, activation=tf.nn.relu, name="h")
             outputs = tf.layers.dense(h, self.env.num_actions, activation=tf.nn.softmax, name="outputs")
             
+            # everything is now the same shape (batch_size, num_actions)
             # nonzero error only for selected actions
             action_mask = tf.one_hot(self.actions, self.env.num_actions, on_value=True, off_value=False)
             targets = tf.tile(tf.expand_dims(self.target_values,1), [1,self.env.num_actions])
             target_outputs = tf.where(action_mask, targets, outputs)    # takes target value where mask is true. takes outputs value otherwise
-            loss = tf.reduce_sum(tf.square(target_outputs - outputs))
+
+            td_error = target_outputs - outputs # only one element in each row is non-zero
+            weights = tf.tile(tf.expand_dims(self.is_weights,1), [1,self.env.num_actions])  # all 1s when not using priority replay
+            weighted_td_error = weights*td_error    # element-wise multiplication
+            
+            loss = tf.reduce_sum(tf.square(weighted_td_error))
             update = tf.train.AdamOptimizer().minimize(loss)
-        return outputs, update
+        return outputs, update, td_error
 
 
     def train(self):
@@ -54,8 +68,16 @@ class DQN_agent():
                 action = self.get_eps_action(state, self.eps)
                 next_state, reward, done, _ = self.env.step(action)
                 self.replay.add((state, action, reward, next_state, done))    # store in experience replay
-                minibatch = self.replay.sample(self.batch_size)    # sample from experience replay
-                self.net_update(minibatch)  # qlearning
+                
+                # sample from experience replay
+                if prioritized_replay:
+                    beta = beta0 + episode*(1-beta0)/episodes   # linear annealing schedule for IS weights
+                    states,actions,rewards,next_states,dones,weights,indices = self.replay.sample(self.batch_size, beta)
+                    self.net_update(states,actions,rewards,next_states,dones,weights,indices)  # qlearning
+                else:
+                    states,actions,rewards,next_states,dones = self.replay.sample(self.batch_size)
+                    self.net_update(states,actions,rewards,next_states,dones)  # qlearning
+                
                 if num_steps%update_every == 0:
                     self.target_net_update()    # slowly update target network
                 state = next_state
@@ -80,8 +102,7 @@ class DQN_agent():
 
 
     # minibatch qlearning
-    def net_update(self, minibatch):
-        states, actions, rewards, next_states, dones = minibatch
+    def net_update(self, states, actions, rewards, next_states, dones, weights=None, indices=None):
         not_dones = np.logical_not(dones)
 
         # create a shape (batch_size, ) array of target values
@@ -91,9 +112,18 @@ class DQN_agent():
         max_Qs = np.max(next_Qs, axis=1)    # np.array of shape (#done,)
         target_values[not_dones] += gamma*max_Qs
 
-        # compute gradients and update parameters
-        self.sess.run(self.Q_update_op, {self.inputs: states, self.target_values: target_values, self.actions: actions})
+        # if not using prioritized replay
+        if weights is None:
+            weights = np.ones(self.batch_size)
 
+        # compute gradients and update parameters
+        _, td_error = self.sess.run([self.Q_update_op, self.td_error_op], \
+                {self.inputs: states, self.target_values: target_values, self.actions: actions, self.is_weights: weights})
+    
+        # update priority replay priorities
+        if indices is not None:
+            td_error = td_error.ravel()[np.flatnonzero(td_error)]   # shape (batch_size, )
+            self.replay.update_priorities(indices, np.abs(td_error)+1e-3)   # add small number to prevent never sampling 0 error transitions
 
     # returns eps-greedy action with respect to Q
     def get_eps_action(self, state, eps):
