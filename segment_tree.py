@@ -10,6 +10,8 @@ class SegmentTree():
         self._neutral = neutral_element
 
     # applies self.operation to contiguous subsequence of the array
+    # this is not strictly needed since we only ever call this function with start=0 and end=capacity-1.
+        # we only need to get value[0]. but this is more general.
     def range_query(self, start=0, end=None):
         if end is None:
             end = self._capacity-1

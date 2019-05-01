@@ -1,5 +1,6 @@
 import numpy as np
 from segment_tree import MinSegmentTree, SumSegmentTree
+from binary_heap import Heap, HeapItem
 
 # from OpenAI's baselines https://github.com/openai/baselines/blob/master/baselines/deepq/replay_buffer.py
 class ExperienceReplay():
@@ -37,9 +38,9 @@ class ExperienceReplay():
 
 # proportional sampling as implemented by OpenAI
 # https://github.com/openai/baselines/blob/master/baselines/deepq/replay_buffer.py
-class PrioritizedReplay(ExperienceReplay):
+class ProportionalReplay(ExperienceReplay):
     def __init__(self, size, alpha):
-        super(PrioritizedReplay, self).__init__(size)
+        super(ProportionalReplay, self).__init__(size)
         assert alpha >= 0
         self._alpha = alpha
 
@@ -100,3 +101,20 @@ class PrioritizedReplay(ExperienceReplay):
             self._min_tree[idx] = priority ** self._alpha
 
             self._max_priority = max(self._max_priority, priority)
+
+# TODO: write versions of every method in ProportionalReplay
+class RankBasedReplay(ExperienceReplay):
+    def __init__(self, size, alpha):
+        super(RankBasedReplay, self).__init__(size)
+        assert alpha >= 0
+        self._alpha = alpha
+
+        min_tree_size = 1
+        while min_tree_size < self.maxsize:
+            min_tree_size *= 2
+
+        self._min_tree = MinSegmentTree(min_tree_size)    # for calculating maximum IS weight
+        self._max_heap = Heap(self.maxsize)
+        self._max_priority = 1.0    # will change as priorities are updated according to TD error
+
+

@@ -36,12 +36,10 @@ class Heap():
         self.arr[i] = self.arr[j]
         self.arr[j] = tmp
 
-    # TODO: calculate segment boundaries, sample from each segment
-    def sample(self, batch_size):
+    #TODO
+    def get_kth_largest(k):
         pass
 
-    def update_priorities(self, priorities, indxs):
-        pass
 
 # for inserting into heap.
 # index is into the replay buffer and refers to a specific state transition
