@@ -1,27 +1,35 @@
 from grid_env import GridEnv
-from experience_replay import ExperienceReplay, PrioritizedReplay
+from experience_replay import ExperienceReplay, ProportionalReplay, RankBasedReplay
+from zipf import save_quantiles
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
 
 episodes = 1000
-runs = 10
+runs = 1
 gamma = .95
 update_every = 100
+sort_every = 1
 prioritized_replay = True
 prioritized_replay_alpha = 0.6  # from paper
 beta0 = 0.4  # from paper
+max_buffer_size = 1000
+replay_type = "ranked"
 
 class DQN_agent():
     def __init__(self):
-        self.eps = 0.1
+        self.eps = 0.2
         self.env = GridEnv(3)
         self.batch_size = 20
         
-        if prioritized_replay:
-            self.replay = PrioritizedReplay(10000, prioritized_replay_alpha)
+        if prioritized_replay and replay_type == "proportional":
+            self.replay = ProportionalReplay(max_buffer_size, prioritized_replay_alpha)
+        elif prioritized_replay and replay_type == "ranked":
+            N_list = [self.batch_size]+[int(x) for x in np.linspace(100,max_buffer_size,5)]
+            save_quantiles(N_list=N_list, k=self.batch_size, alpha=prioritized_replay_alpha)
+            self.replay = RankBasedReplay(max_buffer_size, prioritized_replay_alpha)
         else:
-            self.replay = ExperienceReplay(10000)   # passing size of buffer
+            self.replay = ExperienceReplay(max_buffer_size)   # passing size of buffer
 
         # define graph
         self.inputs = tf.placeholder(tf.float32, shape=(None, self.env.state_size))
@@ -77,9 +85,19 @@ class DQN_agent():
                 else:
                     states,actions,rewards,next_states,dones = self.replay.sample(self.batch_size)
                     self.net_update(states,actions,rewards,next_states,dones)  # qlearning
-                
+               
+                # slowly update target network
                 if num_steps%update_every == 0:
-                    self.target_net_update()    # slowly update target network
+                    self.target_net_update()    
+
+                # sort max heap periodically
+                if num_steps%sort_every == 0:
+                    if prioritized_replay and replay_type == "ranked":
+                        self.replay.sort()
+
+                if num_steps%10 == 0:
+                    print(indices)
+
                 state = next_state
             steps_per_ep[episode] = num_steps
         return steps_per_ep
