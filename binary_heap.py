@@ -62,19 +62,18 @@ class Heap():
         return max_item
 
     # O(k log k) time
-    # returns index of kth largest item in heap
-    def get_kth_largest(self, k):
+    # returns an ordered list of the k largest items in the heap
+    def get_k_largest(self, k):
         assert len(self.arr)-1 >= k
         if k==1:
-            return 0
+            return [0]
 
-        # create new heap. add root of original heap
+        # create new heap. get root of original heap
         aux_heap = Heap(k)
-        aux_heap.insert(HeapItem(self.arr[1].value, 1)) # only need value and index into original heap
-        
+        aux_root = HeapItem(self.arr[1].value, 1) # only need value and index into original heap
+       
+        k_largest = [0]
         for _ in range(k-1):
-            aux_root = aux_heap.extract()   # delete root
-            
             # add children
             left_child_idx = aux_root.index*2
             right_child_idx = left_child_idx + 1
@@ -83,8 +82,10 @@ class Heap():
             if right_child_idx < len(self.arr):
                 aux_heap.insert(HeapItem(self.arr[right_child_idx].value, right_child_idx))
 
-        # the root is the kth largest element
-        return aux_heap.arr[1].index - 1    # exposed indices are decremented by 1
+            aux_root = aux_heap.extract()   # delete root
+            k_largest.append(aux_root.index - 1)    # index of aux_root in original heap, decremented by 1 to appear 0-indexed
+
+        return k_largest
 
 # for inserting into heap.
 # index is into the replay buffer and refers to a specific state transition

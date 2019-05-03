@@ -13,3 +13,8 @@ In order to get ranges of equal probability, I need to work with the zipf distri
 
 1/5/19
 The rank-based sampling version is very slow. It looks like most time is being spent finding the kth largest TD-error in the heap. I might have to look at the O(k) algorithm by Frederickson after all. Even then, though, it would still be slower than the O(log k) proportional sampling. Not to mention the periodic sorting that needs to be done in the rank-based solution. We'll see if it's fast enough to at least finish a small experiment.
+...
+I've thought of some obvious ways to speed up the current sampling algorithm. get_kth_largest is called batch_size times every step, but it could only be called one time--with the largest k--if the output were a sorted array of the k largest elements. This could be done with no extra time per call, and it would reduce runtime by a factor of batch_size. Also, indices into the heap for different values of k can be cached and reused before the heap is sorted again. This speed increase would come at the cost of using an unsorted heap for sampling, but the paper recommends that anyway.
+
+2/5/19
+After further consideration, just doing a full heap sort and saving the order is the best way to go if there will be multiple steps in between sortings. 

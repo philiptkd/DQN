@@ -6,10 +6,10 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 
 episodes = 1000
-runs = 1
+runs = 10
 gamma = .95
 update_every = 100
-sort_every = 1
+sort_every = 10
 prioritized_replay = True
 prioritized_replay_alpha = 0.6  # from paper
 beta0 = 0.4  # from paper
@@ -18,7 +18,7 @@ replay_type = "ranked"
 
 class DQN_agent():
     def __init__(self):
-        self.eps = 0.2
+        self.eps = 0.1
         self.env = GridEnv(3)
         self.batch_size = 20
         
@@ -76,7 +76,7 @@ class DQN_agent():
                 action = self.get_eps_action(state, self.eps)
                 next_state, reward, done, _ = self.env.step(action)
                 self.replay.add((state, action, reward, next_state, done))    # store in experience replay
-                
+               
                 # sample from experience replay
                 if prioritized_replay:
                     beta = beta0 + episode*(1-beta0)/episodes   # linear annealing schedule for IS weights
@@ -94,10 +94,7 @@ class DQN_agent():
                 if num_steps%sort_every == 0:
                     if prioritized_replay and replay_type == "ranked":
                         self.replay.sort()
-
-                if num_steps%10 == 0:
-                    print(indices)
-
+                        
                 state = next_state
             steps_per_ep[episode] = num_steps
         return steps_per_ep

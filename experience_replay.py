@@ -115,6 +115,7 @@ class RankBasedReplay(ExperienceReplay):
         assert alpha >= 0
         self.alpha = alpha
 
+        self.sorted = []
         self.heap = Heap(self.maxsize)
         self.max_priority = 1.0    # will change as priorities are updated according to TD error
  
@@ -127,7 +128,8 @@ class RankBasedReplay(ExperienceReplay):
         if self.next_idx >= len(self.buffer):   # increase size of buffer if there's still room
             self.buffer.append([experience, self.next_idx]) # index is into the heap
             self.heap.insert(HeapItem(self.max_priority**self.alpha, self.next_idx)) # index is into buffer
-        
+            self.sorted.append(self.next_idx)   # while growing, highest priority (newest) is ranked last until we resort
+
         else:                                   # overwrite old experience
             self.buffer[self.next_idx][0] = experience
             heap_idx = self.buffer[self.next_idx][1]
@@ -140,7 +142,7 @@ class RankBasedReplay(ExperienceReplay):
             self.range_idx += 1
 
     # a rank is uniformly sampled from each of a set of precomputed ranges
-    def sample_by_rank(self, batch_size):
+    def _sample_by_rank(self, batch_size):
         if len(self.buffer) < batch_size:       # return all indices if there are fewer than batch_size of them
             return list(range(1, len(self.buffer)+1)) 
 
@@ -153,7 +155,7 @@ class RankBasedReplay(ExperienceReplay):
     # sample batch of experiences along with their weights and indices
     def sample(self, batch_size, beta):
         assert beta > 0
-        ranks = self.sample_by_rank(batch_size)
+        ranks = self._sample_by_rank(batch_size)
 
         p_min = self.min_priorities[self.range_idx] # minimum possible priority for a transition
         max_weight = (p_min * len(self.buffer)) ** (-beta)    # (p_uniform/p_min)^beta is maximum possible IS weight
@@ -166,7 +168,7 @@ class RankBasedReplay(ExperienceReplay):
             weights.append(weight / max_weight) # weights normalized by max so that they only scale the update downwards
         weights = np.array(weights)
 
-        heap_idxs = [self.heap.get_kth_largest(rank) for rank in ranks]
+        heap_idxs = [self.sorted[rank-1] for rank in ranks]
         buffer_idxs = [self.heap[heap_idx].index for heap_idx in heap_idxs]
         encoded_sample = self.encode_samples(buffer_idxs, ranked_priority=True) # collect experience at given indices 
         return tuple(list(encoded_sample) + [weights, heap_idxs])
@@ -187,3 +189,4 @@ class RankBasedReplay(ExperienceReplay):
         for i in range(len(self.heap)):
             buffer_idx = self.heap[i].index
             self.buffer[buffer_idx][1] = i      # update buffer's indices into heap
+        self.sorted = self.heap.get_k_largest(len(self.heap))
