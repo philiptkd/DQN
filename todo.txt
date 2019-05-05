@@ -1,3 +1,2 @@
-implement rank-based priority replay
 replicate cliffwalk results in priority replay paper
 scale to Atari games
